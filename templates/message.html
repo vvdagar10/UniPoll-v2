@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} - UniPoll Score Smart{% endblock %}
+{% set body %}
+  <div class="bg-card border border-line rounded-xl p-8 text-center fade-up">
+    <h1 class="font-serif text-2xl font-bold mb-2">{{ title }}</h1>
+    <p class="text-muted mb-6">{{ message }}</p>
+    <a href="{{ url_for('index') }}" class="inline-block bg-accent hover:bg-accentdark text-white px-5 py-2.5 rounded-lg press">Back to home</a>
+  </div>
+{% endset %}
+{% block content %}{{ body }}{% endblock %}
+{% block auth %}{{ body }}{% endblock %}

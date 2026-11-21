@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}UniPoll Score Smart{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            paper: '#FAF6EE', card: '#FFFDF8', ink: '#2B2A33', muted: '#6B665C',
+            line: '#E4DCCB', accent: '#C0392B', accentdark: '#A02F23', good: '#3F7D58',
+            warn: '#B7791F'
+          },
+          fontFamily: {
+            serif: ['Georgia', 'Merriweather', 'serif'],
+            sans: ['"Segoe UI"', 'system-ui', '-apple-system', 'Arial', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .fade-up { animation: fadeUp .35s ease both; }
+    .lift { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+    .lift:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(43,42,51,.08); border-color: #d6cbb3; }
+    .press { transition: transform .1s ease, background-color .15s ease; }
+    .press:active { transform: scale(.97); }
+    .bar-fill { transition: width .45s ease; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #C0392B; box-shadow: 0 0 0 3px rgba(192,57,43,.15); }
+    ::selection { background: #f2d3ce; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-paper text-ink font-sans antialiased">
+{% if g.user %}
+  {% set role = g.user['role'] %}
+  {% set ep = request.endpoint %}
+  <div class="min-h-screen md:flex">
+    <!-- Mobile top bar -->
+    <header class="md:hidden sticky top-0 z-30 bg-card border-b border-line h-14 flex items-center justify-between px-4">
+      <button id="menuBtn" aria-label="Open menu" class="p-2 -ml-2 rounded press hover:bg-paper">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <span class="font-serif font-bold text-lg">UniPoll <span class="text-accent">Score Smart</span></span>
+      <span class="w-6"></span>
+    </header>
+
+    <div id="backdrop" class="hidden fixed inset-0 bg-ink/40 z-30 md:hidden"></div>
+
+    <aside id="sidebar" class="fixed md:sticky top-0 left-0 z-40 h-screen w-64 shrink-0 bg-card border-r border-line flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-200">
+      <div class="px-5 py-5 border-b border-line">
+        <a href="{{ url_for('dashboard') }}" class="font-serif font-bold text-xl leading-tight block">UniPoll<br><span class="text-accent">Score Smart</span></a>
+      </div>
+      <nav class="flex-1 overflow-y-auto p-3 space-y-1 text-sm">
+        {% macro link(endpoint, label, d, active) %}
+          <a href="{{ url_for(endpoint) }}"
+             class="flex items-center gap-3 px-3 py-2.5 rounded-lg press transition-colors {{ 'bg-accent text-white font-semibold' if active else 'text-ink hover:bg-paper' }}">
+            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="{{ d }}"/></svg>
+            {{ label }}
+          </a>
+        {% endmacro %}
+        {{ link('dashboard', 'Dashboard Overview', 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', ep == 'dashboard') }}
+        {{ link('polls_page', 'Active Polls / Quizzes', 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', ep == 'polls_page') }}
+        {% if role in ('admin', 'creator') %}
+          {{ link('poll_new', 'Create New Poll', 'M12 5v14M5 12h14', ep in ('poll_new', 'poll_edit')) }}
+        {% endif %}
+        {{ link('evaluator_page', 'Answer Sheet Evaluator', 'M4 20h4L19 9a2.1 2.1 0 00-3-3L5 17v3zM14 7l3 3', ep == 'evaluator_page') }}
+        {{ link('analytics_page', 'Results & Score Analytics', 'M4 20V10M10 20V4M16 20v-7M21 20H3', ep == 'analytics_page') }}
+        {% if role == 'admin' %}
+          {{ link('api_setup_page', 'AI Key Setup', 'M15 7a4 4 0 11-3.9 4.9L4 19v2h3v-2h2v-2h2l1.9-1.9A4 4 0 0115 7zM16 9h.01', ep == 'api_setup_page') }}
+        {% endif %}
+        {% if role == 'admin' %}
+          {{ link('users_page', 'User Management', 'M16 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M9.5 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM21 20v-2a4 4 0 00-3-3.87M16 3.13a3.5 3.5 0 010 6.74', ep == 'users_page') }}
+        {% endif %}
+      </nav>
+      <div class="p-4 border-t border-line text-sm">
+        <div class="font-semibold truncate">{{ g.user['name'] }}</div>
+        <div class="text-muted text-xs truncate">{{ g.user['email'] }}</div>
+        <div class="mt-2 flex items-center justify-between">
+          <span class="text-xs uppercase tracking-wide px-2 py-0.5 rounded bg-paper border border-line">{{ role }}</span>
+          <a href="{{ url_for('logout') }}" class="text-accent hover:underline text-sm">Log out</a>
+        </div>
+      </div>
+    </aside>
+
+    <main class="flex-1 min-w-0">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 md:py-8">
+        {% include 'flash.html' %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+  <script>
+    (function () {
+      var sidebar = document.getElementById('sidebar');
+      var backdrop = document.getElementById('backdrop');
+      function open() { sidebar.classList.remove('-translate-x-full'); backdrop.classList.remove('hidden'); }
+      function close() { sidebar.classList.add('-translate-x-full'); backdrop.classList.add('hidden'); }
+      document.getElementById('menuBtn').addEventListener('click', open);
+      backdrop.addEventListener('click', close);
+    })();
+  </script>
+{% else %}
+  <main class="min-h-screen flex items-center justify-center px-4 py-10">
+    <div class="w-full max-w-md">
+      {% include 'flash.html' %}
+      {% block auth %}{% endblock %}
+    </div>
+  </main>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

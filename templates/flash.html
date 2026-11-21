@@ -1,0 +1,13 @@
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="space-y-2 mb-5" id="flashBox">
+      {% for category, text in messages %}
+        <div class="fade-up flex items-start justify-between gap-3 rounded-lg border px-4 py-3 text-sm
+                    {{ 'bg-green-50 border-green-200 text-good' if category == 'success' else 'bg-red-50 border-red-200 text-accentdark' }}">
+          <span>{{ text }}</span>
+          <button type="button" class="opacity-60 hover:opacity-100" onclick="this.parentElement.remove()" aria-label="Dismiss">&times;</button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}

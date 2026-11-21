@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+{% block title %}{{ poll['title'] }} - UniPoll Score Smart{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <div class="mb-5 fade-up">
+    <a href="{{ url_for('polls_page') }}" class="text-sm text-muted hover:text-accent">&larr; Back to polls</a>
+    <h1 class="font-serif text-2xl md:text-3xl font-bold mt-2">{{ poll['title'] }}</h1>
+    {% if poll['description'] %}<p class="text-muted mt-1">{{ poll['description'] }}</p>{% endif %}
+  </div>
+
+  <!-- Progress -->
+  <div class="mb-5">
+    <div class="flex justify-between text-sm text-muted mb-1">
+      <span id="progressLabel">Question 1 of {{ questions|length }}</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="h-2.5 bg-line rounded-full overflow-hidden">
+      <div id="progressBar" class="bar-fill h-full bg-accent rounded-full" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div id="card" class="bg-card border border-line rounded-xl p-5 md:p-7 min-h-[16rem]"></div>
+
+  <div id="errorBox" class="hidden mt-4 rounded-lg border border-red-200 bg-red-50 text-accentdark px-4 py-3 text-sm"></div>
+
+  <div class="flex items-center justify-between mt-5">
+    <button id="backBtn" type="button" class="px-4 py-2 rounded-lg border border-line bg-card hover:bg-paper press">Back</button>
+    <div class="flex items-center gap-3">
+      <span id="hint" class="text-xs text-muted hidden sm:inline"></span>
+      <button id="nextBtn" type="button" class="px-6 py-2.5 rounded-lg bg-accent hover:bg-accentdark text-white font-semibold press disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var POLL_ID = {{ poll['id'] }};
+  var QUESTIONS = {{ questions|tojson }};
+  var answers = {{ saved|tojson }};
+  var current = {{ current }};
+  var TOTAL = QUESTIONS.length;
+  var submitting = false;
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function value(q) { var v = answers[String(q.id)]; return v == null ? '' : String(v); }
+  function isValid(q) { return value(q).trim() !== ''; }
+
+  function render() {
+    var q = QUESTIONS[current];
+    var v = value(q);
+    var html = '<div class="fade-up"><div class="text-xs uppercase tracking-wide text-muted mb-2">' +
+      ({ multiple_choice: 'Choose one answer', open_text: 'Write your answer', rating: 'Pick a rating' }[q.type]) + '</div>' +
+      '<h2 class="font-serif text-xl md:text-2xl font-bold mb-5">' + esc(q.text) + '</h2>';
+
+    if (q.type === 'multiple_choice') {
+      html += '<div class="space-y-2.5">' + q.options.map(function (opt) {
+        var on = v === opt;
+        return '<button type="button" data-opt="' + esc(opt) + '" class="opt w-full text-left px-4 py-3 rounded-lg border press transition-colors ' +
+          (on ? 'border-accent bg-red-50 font-semibold' : 'border-line bg-white hover:border-accent') + '">' +
+          '<span class="inline-block w-4 h-4 rounded-full border mr-3 align-middle ' + (on ? 'border-accent bg-accent' : 'border-line') + '"></span>' + esc(opt) + '</button>';
+      }).join('') + '</div>';
+    } else if (q.type === 'rating') {
+      html += '<div class="flex flex-wrap gap-2">' + q.options.map(function (opt) {
+        var on = v === opt;
+        return '<button type="button" data-opt="' + esc(opt) + '" class="opt w-12 h-12 rounded-lg border font-semibold press transition-colors ' +
+          (on ? 'border-accent bg-accent text-white' : 'border-line bg-white hover:border-accent') + '">' + esc(opt) + '</button>';
+      }).join('') + '</div><div class="flex justify-between text-xs text-muted mt-2"><span>Low</span><span>High</span></div>';
+    } else {
+      html += '<textarea id="textAns" rows="6" maxlength="2000" placeholder="Type your answer here..." class="w-full border border-line rounded-lg px-3 py-2 bg-white">' + esc(v) + '</textarea>' +
+        '<div id="count" class="text-xs text-muted text-right mt-1">' + v.length + ' / 2000</div>';
+    }
+    $('card').innerHTML = html + '</div>';
+
+    var pct = Math.round(current / TOTAL * 100);
+    $('progressLabel').textContent = 'Question ' + (current + 1) + ' of ' + TOTAL;
+    $('progressPct').textContent = pct + '% complete';
+    $('progressBar').style.width = Math.max(pct, 3) + '%';
+    $('backBtn').style.visibility = current === 0 ? 'hidden' : 'visible';
+    $('nextBtn').textContent = current === TOTAL - 1 ? 'Submit' : 'Next';
+    updateNext();
+
+    document.querySelectorAll('.opt').forEach(function (b) {
+      b.addEventListener('click', function () { answers[String(q.id)] = b.dataset.opt; showError(''); render(); });
+    });
+    var ta = $('textAns');
+    if (ta) {
+      ta.addEventListener('input', function () {
+        answers[String(q.id)] = ta.value;
+        $('count').textContent = ta.value.length + ' / 2000';
+        showError('');
+        updateNext();
+      });
+    }
+  }
+
+  function updateNext() {
+    var ok = isValid(QUESTIONS[current]);
+    $('nextBtn').disabled = !ok || submitting;
+    $('hint').textContent = ok ? '' : (QUESTIONS[current].type === 'open_text' ? 'Write an answer to continue' : 'Select an answer to continue');
+  }
+
+  function showError(msg) {
+    var box = $('errorBox');
+    box.textContent = msg;
+    box.classList.toggle('hidden', !msg);
+  }
+
+  function saveProgress() {
+    fetch('/api/polls/' + POLL_ID + '/progress', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: answers, current: current })
+    }).catch(function () {});
+  }
+
+  $('backBtn').addEventListener('click', function () {
+    if (current > 0) { current--; showError(''); render(); saveProgress(); }
+  });
+
+  $('nextBtn').addEventListener('click', function () {
+    if (!isValid(QUESTIONS[current])) return;
+    if (current < TOTAL - 1) { current++; showError(''); render(); saveProgress(); return; }
+    submitting = true; updateNext();
+    $('nextBtn').textContent = 'Scoring...';
+    fetch('/api/polls/' + POLL_ID + '/submit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: answers })
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (res.ok) { window.location = res.d.redirect; return; }
+        submitting = false; showError(res.d.error || 'Something went wrong.');
+        $('nextBtn').textContent = 'Submit'; updateNext();
+      }).catch(function () {
+        submitting = false; showError('Could not reach the server. Please try again.');
+        $('nextBtn').textContent = 'Submit'; updateNext();
+      });
+  });
+
+  // Make sure the first screen is recorded as "started" and progress survives a refresh.
+  render();
+})();
+</script>
+{% endblock %}

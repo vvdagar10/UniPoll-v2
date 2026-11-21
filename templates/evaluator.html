@@ -1,0 +1,289 @@
+{% extends 'base.html' %}
+{% block title %}Answer Sheet Evaluator - UniPoll Score Smart{% endblock %}
+{% block content %}
+<div class="mb-6 fade-up">
+  <h1 class="font-serif text-3xl md:text-4xl font-bold leading-tight">Get your answer marked,<br>point by point.</h1>
+  <p class="text-muted mt-2 max-w-2xl">Paste the marking scheme and your written answer, or upload photos of the pages. You get a score, the exact points you missed, and feedback you can act on.</p>
+</div>
+
+{% if not has_key %}
+<div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 text-warn px-4 py-3 text-sm fade-up">
+  AI marking needs an API key.
+  {% if can_setup %}<a class="underline font-semibold" href="{{ url_for('api_setup_page') }}">Add it on the AI Key Setup page</a> and it will be saved for good.
+  {% else %}Ask an admin or creator to add one.{% endif %}
+</div>
+{% endif %}
+
+<div class="grid lg:grid-cols-5 gap-5 items-start">
+  <!-- LEFT: form -->
+  <div class="lg:col-span-2 space-y-5">
+    <section class="bg-card border border-line rounded-xl p-5 fade-up">
+      <div class="flex justify-between items-baseline">
+        <label for="scheme" class="text-xs uppercase tracking-widest text-muted">Marking scheme or model answer</label>
+        <span class="text-xs text-muted">Required</span>
+      </div>
+      <textarea id="scheme" rows="5" maxlength="8000" placeholder="1 mark each for: definition of osmosis, direction of water movement, a named example. 3 marks for explaining the concentration gradient..."
+                class="mt-2 w-full border border-line rounded-lg px-3 py-2.5 bg-white text-sm resize-y"></textarea>
+
+      <div class="flex justify-between items-center mt-5">
+        <span class="text-xs uppercase tracking-widest text-muted">The answer to mark</span>
+        <div class="inline-flex rounded-full border border-line bg-paper p-0.5 text-xs uppercase tracking-wider" role="tablist">
+          <button type="button" id="tabType" class="px-3 py-1 rounded-full bg-white shadow-sm font-semibold" role="tab" aria-selected="true">Type</button>
+          <button type="button" id="tabPhoto" class="px-3 py-1 rounded-full text-muted" role="tab" aria-selected="false">Photo</button>
+        </div>
+      </div>
+
+      <div id="typeBox" class="mt-2">
+        <textarea id="answer" rows="9" maxlength="12000" placeholder="Paste the written answer exactly as it was submitted."
+                  class="w-full border border-line rounded-lg px-3 py-2.5 bg-white text-sm resize-y"></textarea>
+      </div>
+      <div id="photoBox" class="mt-2 hidden">
+        <label for="photoInput" class="flex flex-col items-center justify-center text-center border border-dashed border-line rounded-lg bg-white px-4 py-8 cursor-pointer hover:bg-paper transition-colors">
+          <svg class="w-7 h-7 text-muted mb-2" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 17a3.5 3.5 0 100-7 3.5 3.5 0 000 7z"/></svg>
+          <span class="text-sm font-semibold">Upload photos of the answer pages</span>
+          <span class="text-xs text-muted mt-1">Up to 4 images (JPG, PNG, WebP). Clear, well-lit handwriting works best.</span>
+        </label>
+        <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" multiple class="hidden">
+        <div id="thumbs" class="mt-3 flex flex-wrap gap-2"></div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 mt-5">
+        <div>
+          <label for="total" class="text-xs uppercase tracking-widest text-muted">Total marks</label>
+          <input id="total" type="number" min="1" max="1000" value="20" class="mt-2 w-full border border-line rounded-lg px-3 py-2.5 bg-white text-sm">
+        </div>
+        <div>
+          <label for="subject" class="text-xs uppercase tracking-widest text-muted">Subject</label>
+          <input id="subject" type="text" maxlength="60" placeholder="Biology" class="mt-2 w-full border border-line rounded-lg px-3 py-2.5 bg-white text-sm">
+        </div>
+      </div>
+
+      <div class="flex justify-between items-baseline mt-5">
+        <label for="question" class="text-xs uppercase tracking-widest text-muted">Exam question</label>
+        <span class="text-xs text-muted">Optional</span>
+      </div>
+      <textarea id="question" rows="2" maxlength="2000" placeholder="Adding the question makes the feedback sharper."
+                class="mt-2 w-full border border-line rounded-lg px-3 py-2.5 bg-white text-sm resize-y"></textarea>
+
+      <button id="markBtn" type="button" class="press mt-5 w-full bg-accent hover:bg-accentdark text-white font-semibold rounded-lg px-4 py-3 text-sm flex items-center justify-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 00-3-3L5 17v3z"/></svg>
+        <span id="markLabel">Mark this answer</span>
+      </button>
+    </section>
+
+    <section class="fade-up">
+      <div class="flex justify-between items-center border-b border-line pb-2">
+        <h2 class="text-xs uppercase tracking-widest text-muted">Recent scripts</h2>
+        <button id="clearRecent" type="button" class="text-xs uppercase tracking-widest text-muted hover:text-accent">Clear</button>
+      </div>
+      <ul id="recent" class="divide-y divide-line"></ul>
+    </section>
+  </div>
+
+  <!-- RIGHT: result -->
+  <div class="lg:col-span-3 lg:sticky lg:top-6">
+    <section id="resultCard" class="bg-card border border-dashed border-line rounded-xl min-h-[24rem] flex items-center justify-center p-6" aria-live="polite">
+      <div id="placeholder" class="text-center max-w-xs">
+        <div class="mx-auto w-11 h-11 rounded-full border border-line bg-paper flex items-center justify-center text-accent mb-4">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 00-3-3L5 17v3z"/></svg>
+        </div>
+        <h2 class="font-serif text-xl font-bold">Your marked script appears here</h2>
+        <p class="text-sm text-muted mt-2">The score, the exact points the scheme asked for and your answer left out, and feedback on what to fix next time.</p>
+        <p class="text-xs uppercase tracking-widest text-muted mt-5">Paste &mdash; Mark &mdash; Revise</p>
+      </div>
+      <div id="loading" class="hidden text-center">
+        <div class="mx-auto w-8 h-8 rounded-full border-2 border-line border-t-accent animate-spin mb-3"></div>
+        <p class="text-sm text-muted">Marking your answer against the scheme&hellip;</p>
+      </div>
+      <div id="result" class="hidden w-full self-start"></div>
+    </section>
+  </div>
+</div>
+
+<p class="text-xs text-muted mt-8 pt-4 border-t border-line">Marks come from an AI examiner reading your scheme. Treat them as guidance rather than a grade, and check anything that matters against your teacher's marking. Recent scripts stay on this device.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var STORE = 'unipoll_recent_scripts_v1';
+  var photos = [];  // {type, data, url}
+  var mode = 'type';
+
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function fmt(n) { return (Math.round(n * 100) / 100).toString(); }
+
+  /* ---------- Type / Photo toggle ---------- */
+  function setMode(m) {
+    mode = m;
+    $('typeBox').classList.toggle('hidden', m !== 'type');
+    $('photoBox').classList.toggle('hidden', m !== 'photo');
+    $('tabType').className = 'px-3 py-1 rounded-full ' + (m === 'type' ? 'bg-white shadow-sm font-semibold' : 'text-muted');
+    $('tabPhoto').className = 'px-3 py-1 rounded-full ' + (m === 'photo' ? 'bg-white shadow-sm font-semibold' : 'text-muted');
+    $('tabType').setAttribute('aria-selected', m === 'type');
+    $('tabPhoto').setAttribute('aria-selected', m === 'photo');
+  }
+  $('tabType').addEventListener('click', function () { setMode('type'); });
+  $('tabPhoto').addEventListener('click', function () { setMode('photo'); });
+
+  /* ---------- Photos: shrink in the browser, then keep as base64 ---------- */
+  function shrink(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image(), url = URL.createObjectURL(file);
+      img.onload = function () {
+        var max = 1600, scale = Math.min(1, max / Math.max(img.width, img.height));
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        var dataUrl = c.toDataURL('image/jpeg', 0.85);
+        URL.revokeObjectURL(url);
+        resolve({ type: 'image/jpeg', data: dataUrl.split(',')[1], url: dataUrl });
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('bad image')); };
+      img.src = url;
+    });
+  }
+  function drawThumbs() {
+    $('thumbs').innerHTML = photos.map(function (p, i) {
+      return '<div class="relative"><img src="' + p.url + '" alt="Page ' + (i + 1) + '" class="w-16 h-20 object-cover rounded border border-line">' +
+             '<button type="button" data-i="' + i + '" class="rm absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-ink text-white text-xs leading-none" aria-label="Remove page ' + (i + 1) + '">&times;</button></div>';
+    }).join('');
+  }
+  $('thumbs').addEventListener('click', function (e) {
+    var b = e.target.closest('.rm'); if (!b) return;
+    photos.splice(parseInt(b.dataset.i, 10), 1); drawThumbs();
+  });
+  $('photoInput').addEventListener('change', async function () {
+    var files = Array.prototype.slice.call(this.files);
+    this.value = '';
+    for (var i = 0; i < files.length; i++) {
+      if (photos.length >= 4) { showError('You can upload up to 4 photos.'); break; }
+      try { photos.push(await shrink(files[i])); } catch (e) { showError('One of those files could not be read as an image.'); }
+    }
+    drawThumbs();
+  });
+
+  /* ---------- Result display ---------- */
+  function show(which) {
+    ['placeholder', 'loading', 'result'].forEach(function (id) { $(id).classList.toggle('hidden', id !== which); });
+    $('resultCard').classList.toggle('items-center', which !== 'result');
+    $('resultCard').classList.toggle('items-start', which === 'result');
+    $('resultCard').classList.toggle('border-dashed', which !== 'result');
+  }
+  function showError(msg, needsKey) {
+    var link = needsKey ? ' {% if can_setup %}<a class="underline font-semibold" href="{{ url_for('api_setup_page') }}">Open AI Key Setup</a>{% endif %}' : '';
+    $('result').innerHTML = '<div class="rounded-lg border border-red-200 bg-red-50 text-accentdark px-4 py-3 text-sm">' + esc(msg) + link + '</div>';
+    show('result');
+  }
+  function renderResult(r) {
+    var pct = r.total ? Math.round(r.score / r.total * 100) : 0;
+    var tone = pct >= 70 ? 'text-good' : (pct >= 40 ? 'text-warn' : 'text-accent');
+    var missed = r.points.filter(function (p) { return p.status !== 'full'; });
+    var html = '<div class="fade-up">' +
+      '<div class="flex items-end justify-between gap-4 border-b border-line pb-4">' +
+        '<div><div class="text-xs uppercase tracking-widest text-muted">Your mark</div>' +
+        '<div class="font-serif font-bold text-5xl ' + tone + '">' + fmt(r.score) + '<span class="text-2xl text-muted"> / ' + fmt(r.total) + '</span></div></div>' +
+        '<div class="text-right"><div class="font-serif text-3xl font-bold ' + tone + '">' + pct + '%</div>' +
+        '<div class="h-2 w-32 bg-paper border border-line rounded-full overflow-hidden mt-1"><div class="h-full bg-accent bar-fill" style="width:' + pct + '%"></div></div></div>' +
+      '</div>';
+
+    if (r.summary) html += '<p class="mt-4 text-sm leading-relaxed">' + esc(r.summary) + '</p>';
+
+    html += '<h3 class="text-xs uppercase tracking-widest text-muted mt-6 mb-2">Mark by mark</h3><ul class="space-y-2">';
+    r.points.forEach(function (p) {
+      var badge = p.status === 'full' ? 'bg-green-50 border-green-200 text-good'
+                : p.status === 'partial' ? 'bg-amber-50 border-amber-200 text-warn'
+                : 'bg-red-50 border-red-200 text-accentdark';
+      var label = p.status === 'full' ? 'Awarded' : (p.status === 'partial' ? 'Partly' : 'Missed');
+      html += '<li class="border border-line rounded-lg bg-white px-3 py-2.5 text-sm">' +
+        '<div class="flex justify-between gap-3"><span class="font-semibold">' + esc(p.point) + '</span>' +
+        '<span class="shrink-0 text-xs px-2 py-0.5 rounded border h-fit ' + badge + '">' + label + ' &middot; ' + fmt(p.marks_awarded) + '/' + fmt(p.marks_available) + '</span></div>' +
+        (p.comment ? '<div class="text-muted mt-1">' + esc(p.comment) + '</div>' : '') +
+        (p.evidence ? '<div class="text-xs text-muted mt-1 italic">&ldquo;' + esc(p.evidence) + '&rdquo;</div>' : '') +
+        '</li>';
+    });
+    html += '</ul>';
+
+    if (missed.length) {
+      html += '<h3 class="text-xs uppercase tracking-widest text-muted mt-6 mb-2">Points you missed</h3><ul class="list-disc pl-5 text-sm space-y-1">' +
+        missed.map(function (p) { return '<li>' + esc(p.point) + ' <span class="text-muted">(' + fmt(p.marks_available - p.marks_awarded) + ' mark' + ((p.marks_available - p.marks_awarded) === 1 ? '' : 's') + ' lost)</span></li>'; }).join('') + '</ul>';
+    } else {
+      html += '<p class="mt-6 text-sm text-good font-semibold">You covered every point in the scheme.</p>';
+    }
+    if (r.strengths && r.strengths.length) {
+      html += '<h3 class="text-xs uppercase tracking-widest text-muted mt-6 mb-2">What worked</h3><ul class="list-disc pl-5 text-sm space-y-1">' +
+        r.strengths.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>';
+    }
+    if (r.improvements && r.improvements.length) {
+      html += '<h3 class="text-xs uppercase tracking-widest text-muted mt-6 mb-2">Fix next time</h3><ul class="list-disc pl-5 text-sm space-y-1">' +
+        r.improvements.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>';
+    }
+    html += '</div>';
+    $('result').innerHTML = html;
+    show('result');
+  }
+
+  /* ---------- Recent scripts (this device only) ---------- */
+  function loadRecent() { try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch (e) { return []; } }
+  function saveRecent(list) { try { localStorage.setItem(STORE, JSON.stringify(list.slice(0, 8))); } catch (e) {} }
+  function ago(ts) {
+    var m = Math.round((Date.now() - ts) / 60000);
+    if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
+    var h = Math.round(m / 60); if (h < 24) return h + ' hr ago';
+    var d = Math.round(h / 24); return d + ' day' + (d === 1 ? '' : 's') + ' ago';
+  }
+  function drawRecent() {
+    var list = loadRecent();
+    $('recent').innerHTML = list.length ? list.map(function (it, i) {
+      return '<li><button type="button" data-i="' + i + '" class="open w-full flex justify-between items-center gap-3 py-3 text-left hover:bg-card px-1 rounded">' +
+        '<span class="min-w-0"><span class="block text-sm truncate">' + esc(it.title) + '</span><span class="block text-xs text-muted">' + ago(it.at) + '</span></span>' +
+        '<span class="font-mono text-xs text-muted shrink-0">' + fmt(it.result.score) + '/' + fmt(it.result.total) + '</span></button></li>';
+    }).join('') : '<li class="py-4 text-xs text-muted">Nothing marked yet.</li>';
+  }
+  $('recent').addEventListener('click', function (e) {
+    var b = e.target.closest('.open'); if (!b) return;
+    var it = loadRecent()[parseInt(b.dataset.i, 10)]; if (it) renderResult(it.result);
+  });
+  $('clearRecent').addEventListener('click', function () {
+    if (loadRecent().length && confirm('Clear recent scripts from this device?')) { saveRecent([]); drawRecent(); }
+  });
+
+  /* ---------- Mark ---------- */
+  $('markBtn').addEventListener('click', async function () {
+    var btn = this;
+    var scheme = $('scheme').value.trim(), answer = $('answer').value.trim();
+    var useImages = mode === 'photo' ? photos : [];
+    if (!scheme) { showError('Add the marking scheme or model answer first.'); return; }
+    if (mode === 'type' && !answer) { showError('Paste the answer you want marked.'); return; }
+    if (mode === 'photo' && !photos.length) { showError('Upload at least one photo of the answer.'); return; }
+
+    btn.disabled = true; btn.style.opacity = '.6'; $('markLabel').textContent = 'Marking...';
+    show('loading');
+    try {
+      var res = await fetch('/api/evaluate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scheme: scheme, answer: mode === 'type' ? answer : '', question: $('question').value,
+          subject: $('subject').value, total_marks: $('total').value,
+          images: useImages.map(function (p) { return { type: p.type, data: p.data }; })
+        })
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) { showError(data.error || 'Something went wrong. Please try again.', data.needs_key); return; }
+      renderResult(data);
+      var q = $('question').value.trim() || scheme;
+      var list = loadRecent();
+      list.unshift({ title: q.length > 70 ? q.slice(0, 70) + '...' : q, at: Date.now(), result: data });
+      saveRecent(list); drawRecent();
+    } catch (e) {
+      showError('Network error. Is the server running?');
+    } finally {
+      btn.disabled = false; btn.style.opacity = ''; $('markLabel').textContent = 'Mark this answer';
+    }
+  });
+
+  drawRecent();
+})();
+</script>
+{% endblock %}

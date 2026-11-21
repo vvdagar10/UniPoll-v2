@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}Polls & Quizzes - UniPoll Score Smart{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-3 mb-5 fade-up">
+  <div>
+    <h1 class="font-serif text-2xl md:text-3xl font-bold">Active Polls &amp; Quizzes</h1>
+    <p class="text-muted">Choose one to take{% if g.user['role'] != 'respondent' %}, or manage the ones you created{% endif %}.</p>
+  </div>
+  {% if g.user['role'] in ('admin', 'creator') %}
+    <a href="{{ url_for('poll_new') }}" class="bg-accent hover:bg-accentdark text-white px-4 py-2 rounded-lg press">+ Create New Poll</a>
+  {% endif %}
+</div>
+
+<div class="flex flex-col sm:flex-row gap-3 mb-5">
+  <input id="search" type="search" placeholder="Search by title..." class="flex-1 border border-line rounded-lg px-3 py-2 bg-white">
+  <select id="category" class="border border-line rounded-lg px-3 py-2 bg-white">
+    <option value="">All categories</option>
+    {% for c in categories %}<option value="{{ c|lower }}">{{ c }}</option>{% endfor %}
+  </select>
+</div>
+
+{% if polls %}
+<div id="grid" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+  {% for p in polls %}
+    {% set manage = g.user['role'] == 'admin' or p.created_by == g.user['id'] %}
+    <article class="poll-card lift bg-card border border-line rounded-xl p-5 flex flex-col fade-up"
+             data-title="{{ p.title|lower }}" data-category="{{ (p.category or '')|lower }}">
+      <div class="flex items-start justify-between gap-2">
+        <span class="text-xs px-2 py-0.5 rounded-full bg-paper border border-line">{{ p.category }}</span>
+        <span class="state text-xs px-2 py-0.5 rounded-full border {{ 'border-good text-good' if p.is_active else 'border-line text-muted' }}">{{ 'Active' if p.is_active else 'Closed' }}</span>
+      </div>
+      <h2 class="font-serif text-lg font-bold mt-3">{{ p.title }}</h2>
+      <p class="text-sm text-muted mt-1 line-clamp-2 flex-1">{{ p.description or 'No description.' }}</p>
+      <div class="text-xs text-muted mt-3 flex flex-wrap gap-x-3 gap-y-1">
+        <span>{{ p.q_count }} questions</span>
+        <span>{% if p.passing_score > 0 %}Pass mark {{ p.passing_score|fmt }}%{% else %}No pass mark{% endif %}</span>
+        <span>By {{ p.creator_name }}</span>
+      </div>
+      {% if manage %}
+        <div class="text-xs text-muted mt-1">{{ p.completed }} completed &middot; {{ p.partial }} partial{% if p.avg_score is not none %} &middot; avg {{ p.avg_score|fmt }}%{% endif %}</div>
+      {% endif %}
+      <div class="flex flex-wrap gap-2 mt-4">
+        {% if p.is_active or manage %}
+          <a href="{{ url_for('poll_take', poll_id=p.id) }}" class="bg-accent hover:bg-accentdark text-white text-sm px-3 py-1.5 rounded-lg press">{{ 'Preview' if not p.is_active else 'Take' }}</a>
+        {% endif %}
+        {% if manage %}
+          <a href="{{ url_for('analytics_page', poll=p.id) }}" class="text-sm px-3 py-1.5 rounded-lg border border-line hover:bg-paper press">Results</a>
+          <a href="{{ url_for('poll_edit', poll_id=p.id) }}" class="text-sm px-3 py-1.5 rounded-lg border border-line hover:bg-paper press">Edit</a>
+          <button data-toggle="{{ p.id }}" class="text-sm px-3 py-1.5 rounded-lg border border-line hover:bg-paper press">{{ 'Close' if p.is_active else 'Reopen' }}</button>
+          <button data-delete="{{ p.id }}" class="text-sm px-3 py-1.5 rounded-lg border border-red-200 text-accent hover:bg-red-50 press">Delete</button>
+        {% endif %}
+      </div>
+    </article>
+  {% endfor %}
+</div>
+<p id="noMatch" class="hidden text-center text-muted py-10">No polls match your search.</p>
+{% else %}
+  <div class="bg-card border border-line rounded-xl p-10 text-center text-muted">No polls available yet.</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var search = document.getElementById('search');
+    var category = document.getElementById('category');
+    function filter() {
+      var term = search.value.trim().toLowerCase();
+      var cat = category.value;
+      var shown = 0;
+      document.querySelectorAll('.poll-card').forEach(function (card) {
+        var ok = card.dataset.title.indexOf(term) !== -1 && (!cat || card.dataset.category === cat);
+        card.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+      });
+      var none = document.getElementById('noMatch');
+      if (none) none.classList.toggle('hidden', shown > 0);
+    }
+    search.addEventListener('input', filter);
+    category.addEventListener('change', filter);
+
+    document.querySelectorAll('[data-toggle]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        fetch('/api/polls/' + btn.dataset.toggle + '/toggle', { method: 'POST' })
+          .then(function (r) { return r.json(); })
+          .then(function () { window.location.reload(); });
+      });
+    });
+    document.querySelectorAll('[data-delete]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!confirm('Delete this poll and all of its responses? This cannot be undone.')) return;
+        fetch('/api/polls/' + btn.dataset.delete, { method: 'DELETE' })
+          .then(function (r) { return r.json(); })
+          .then(function () { window.location.reload(); });
+      });
+    });
+  })();
+</script>
+{% endblock %}

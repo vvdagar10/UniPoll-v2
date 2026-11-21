@@ -1,0 +1,336 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if editing else 'Create' }} Poll - UniPoll Score Smart{% endblock %}
+{% block content %}
+<div class="mb-5 fade-up">
+  <h1 class="font-serif text-2xl md:text-3xl font-bold">{{ 'Edit poll' if editing else 'Create New Poll' }}</h1>
+  <p class="text-muted">Build a quiz, poll or survey in three steps.</p>
+</div>
+
+<!-- Stepper -->
+<ol id="stepper" class="flex items-center gap-2 mb-6 text-sm"></ol>
+
+<div id="errorBox" class="hidden mb-4 rounded-lg border border-red-200 bg-red-50 text-accentdark px-4 py-3 text-sm"></div>
+
+<!-- Step 1: details -->
+<section id="step1" class="bg-card border border-line rounded-xl p-5 md:p-6 space-y-4 fade-up">
+  <h2 class="font-serif text-lg font-bold">1. Poll details</h2>
+  <div>
+    <label class="block text-sm font-semibold mb-1" for="title">Title</label>
+    <input id="title" class="w-full border border-line rounded-lg px-3 py-2 bg-white" placeholder="e.g. Python Basics Quiz">
+  </div>
+  <div>
+    <label class="block text-sm font-semibold mb-1" for="description">Description</label>
+    <textarea id="description" rows="3" class="w-full border border-line rounded-lg px-3 py-2 bg-white" placeholder="What is this poll about?"></textarea>
+  </div>
+  <div class="grid sm:grid-cols-3 gap-4">
+    <div>
+      <label class="block text-sm font-semibold mb-1" for="category">Category</label>
+      <input id="category" list="cats" class="w-full border border-line rounded-lg px-3 py-2 bg-white" placeholder="General">
+      <datalist id="cats"><option>General</option><option>Quiz</option><option>Survey</option><option>Programming</option><option>Science</option><option>Feedback</option></datalist>
+    </div>
+    <div>
+      <label class="block text-sm font-semibold mb-1" for="passing">Passing score (%)</label>
+      <input id="passing" type="number" min="0" max="100" class="w-full border border-line rounded-lg px-3 py-2 bg-white">
+      <p class="text-xs text-muted mt-1">Use 0 for a survey with no pass mark.</p>
+    </div>
+    <div>
+      <span class="block text-sm font-semibold mb-1">Status</span>
+      <label class="inline-flex items-center gap-2 mt-2 cursor-pointer">
+        <input id="active" type="checkbox" class="w-4 h-4 accent-accent"> <span class="text-sm">Active (accepting responses)</span>
+      </label>
+    </div>
+  </div>
+</section>
+
+<!-- Step 2: questions -->
+<section id="step2" class="hidden space-y-4">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="font-serif text-lg font-bold">2. Questions</h2>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" data-add="multiple_choice" class="text-sm border border-line bg-card hover:bg-paper px-3 py-1.5 rounded-lg press">+ Multiple choice</button>
+      <button type="button" data-add="open_text" class="text-sm border border-line bg-card hover:bg-paper px-3 py-1.5 rounded-lg press">+ Open text</button>
+      <button type="button" data-add="rating" class="text-sm border border-line bg-card hover:bg-paper px-3 py-1.5 rounded-lg press">+ Rating</button>
+    </div>
+  </div>
+  <p class="text-xs text-muted">Leave the correct answer empty to make a question unscored (good for surveys). Scored questions count toward the final percentage.</p>
+  <div id="questionList" class="space-y-4"></div>
+  <p id="emptyQ" class="hidden text-center text-muted bg-card border border-dashed border-line rounded-xl py-10">No questions yet. Add your first question using the buttons above.</p>
+</section>
+
+<!-- Step 3: review -->
+<section id="step3" class="hidden bg-card border border-line rounded-xl p-5 md:p-6 fade-up">
+  <h2 class="font-serif text-lg font-bold mb-3">3. Review &amp; publish</h2>
+  <div id="review" class="space-y-3 text-sm"></div>
+</section>
+
+<div class="flex items-center justify-between mt-6">
+  <button id="backBtn" type="button" class="px-4 py-2 rounded-lg border border-line bg-card hover:bg-paper press">Back</button>
+  <button id="nextBtn" type="button" class="px-5 py-2 rounded-lg bg-accent hover:bg-accentdark text-white font-semibold press">Next</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var POLL = {{ poll|tojson }};
+  var EDITING = {{ 'true' if editing else 'false' }};
+  var step = 1;
+
+  // ----- state -----
+  var state = {
+    id: POLL.id, title: POLL.title, description: POLL.description, category: POLL.category,
+    passing_score: POLL.passing_score, is_active: POLL.is_active,
+    questions: POLL.questions.map(function (q) {
+      var item = {
+        id: q.id, question_text: q.question_text, question_type: q.question_type,
+        options: q.options.slice(), explanation: q.explanation, points: q.points,
+        correct_index: -1, correct_answer: q.correct_answer || ''
+      };
+      if (q.question_type === 'multiple_choice') {
+        item.correct_index = q.options.indexOf(q.correct_answer);
+      }
+      return item;
+    })
+  };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function $(id) { return document.getElementById(id); }
+
+  // ----- step 1 binding -----
+  $('title').value = state.title;
+  $('description').value = state.description;
+  $('category').value = state.category;
+  $('passing').value = state.passing_score;
+  $('active').checked = !!state.is_active;
+  $('title').addEventListener('input', function (e) { state.title = e.target.value; });
+  $('description').addEventListener('input', function (e) { state.description = e.target.value; });
+  $('category').addEventListener('input', function (e) { state.category = e.target.value; });
+  $('passing').addEventListener('input', function (e) { state.passing_score = e.target.value; });
+  $('active').addEventListener('change', function (e) { state.is_active = e.target.checked; });
+
+  // ----- questions -----
+  function newQuestion(type) {
+    var q = { id: null, question_text: '', question_type: type, options: [], explanation: '',
+              points: 1, correct_index: -1, correct_answer: '' };
+    if (type === 'multiple_choice') q.options = ['', ''];
+    if (type === 'rating') q.options = ['1', '2', '3', '4', '5'];
+    return q;
+  }
+
+  var TYPE_LABEL = { multiple_choice: 'Multiple choice', open_text: 'Open text', rating: 'Rating' };
+
+  function renderQuestions() {
+    var list = $('questionList');
+    $('emptyQ').classList.toggle('hidden', state.questions.length > 0);
+    list.innerHTML = state.questions.map(function (q, i) {
+      var body = '';
+      if (q.question_type === 'multiple_choice') {
+        body += '<div class="text-sm font-semibold mb-1">Options <span class="font-normal text-muted">(select the correct one, or none for an unscored question)</span></div><div class="space-y-2">';
+        q.options.forEach(function (opt, oi) {
+          body += '<div class="flex items-center gap-2">' +
+            '<input type="radio" name="correct' + i + '" data-field="correct_index" data-i="' + i + '" value="' + oi + '" class="accent-accent w-4 h-4"' + (q.correct_index === oi ? ' checked' : '') + ' title="Mark as correct">' +
+            '<input data-field="option" data-i="' + i + '" data-o="' + oi + '" value="' + esc(opt) + '" placeholder="Option ' + (oi + 1) + '" class="flex-1 border border-line rounded-lg px-3 py-1.5 bg-white text-sm">' +
+            '<button type="button" data-act="removeOption" data-i="' + i + '" data-o="' + oi + '" class="text-muted hover:text-accent px-2" aria-label="Remove option">&times;</button></div>';
+        });
+        body += '</div><div class="flex gap-3 mt-2"><button type="button" data-act="addOption" data-i="' + i + '" class="text-sm text-accent hover:underline">+ Add option</button>' +
+          (q.correct_index >= 0 ? '<button type="button" data-act="clearCorrect" data-i="' + i + '" class="text-sm text-muted hover:underline">Clear correct answer</button>' : '') + '</div>';
+      } else if (q.question_type === 'rating') {
+        body += '<div class="grid sm:grid-cols-2 gap-3"><div><label class="block text-sm font-semibold mb-1">Scale</label>' +
+          '<select data-field="scale" data-i="' + i + '" class="w-full border border-line rounded-lg px-3 py-1.5 bg-white text-sm">' +
+          [5, 10].map(function (n) { return '<option value="' + n + '"' + (q.options.length === n ? ' selected' : '') + '>1 to ' + n + '</option>'; }).join('') + '</select></div>' +
+          '<div><label class="block text-sm font-semibold mb-1">Correct rating <span class="font-normal text-muted">(optional)</span></label>' +
+          '<select data-field="correct_answer" data-i="' + i + '" class="w-full border border-line rounded-lg px-3 py-1.5 bg-white text-sm"><option value="">Not scored</option>' +
+          q.options.map(function (o) { return '<option value="' + o + '"' + (q.correct_answer === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select></div></div>';
+      } else {
+        body += '<label class="block text-sm font-semibold mb-1">Scoring rubric <span class="font-normal text-muted">(comma-separated keywords that a good answer should contain; leave empty for unscored)</span></label>' +
+          '<input data-field="correct_answer" data-i="' + i + '" value="' + esc(q.correct_answer) + '" placeholder="e.g. store, value, name" class="w-full border border-line rounded-lg px-3 py-1.5 bg-white text-sm">';
+      }
+      return '<div class="bg-card border border-line rounded-xl p-4 md:p-5 fade-up">' +
+        '<div class="flex items-center justify-between gap-2 mb-3">' +
+        '<div class="flex items-center gap-2"><span class="font-serif font-bold">Q' + (i + 1) + '</span>' +
+        '<select data-field="question_type" data-i="' + i + '" class="border border-line rounded-lg px-2 py-1 bg-white text-sm">' +
+        Object.keys(TYPE_LABEL).map(function (t) { return '<option value="' + t + '"' + (q.question_type === t ? ' selected' : '') + '>' + TYPE_LABEL[t] + '</option>'; }).join('') + '</select></div>' +
+        '<div class="flex items-center gap-1">' +
+        '<button type="button" data-act="up" data-i="' + i + '" class="px-2 py-1 text-muted hover:text-ink" title="Move up">&uarr;</button>' +
+        '<button type="button" data-act="down" data-i="' + i + '" class="px-2 py-1 text-muted hover:text-ink" title="Move down">&darr;</button>' +
+        '<button type="button" data-act="remove" data-i="' + i + '" class="px-2 py-1 text-accent hover:underline text-sm">Delete</button></div></div>' +
+        '<textarea data-field="question_text" data-i="' + i + '" rows="2" placeholder="Type your question here" class="w-full border border-line rounded-lg px-3 py-2 bg-white mb-3">' + esc(q.question_text) + '</textarea>' +
+        body +
+        '<div class="grid sm:grid-cols-4 gap-3 mt-3"><div><label class="block text-sm font-semibold mb-1">Points</label>' +
+        '<input type="number" min="0.5" step="0.5" data-field="points" data-i="' + i + '" value="' + esc(q.points) + '" class="w-full border border-line rounded-lg px-3 py-1.5 bg-white text-sm"></div>' +
+        '<div class="sm:col-span-3"><label class="block text-sm font-semibold mb-1">Explanation shown after submission <span class="font-normal text-muted">(optional)</span></label>' +
+        '<input data-field="explanation" data-i="' + i + '" value="' + esc(q.explanation) + '" class="w-full border border-line rounded-lg px-3 py-1.5 bg-white text-sm"></div></div></div>';
+    }).join('');
+  }
+
+  var list = $('questionList');
+  list.addEventListener('input', function (e) {
+    var f = e.target.dataset.field;
+    if (!f) return;
+    var q = state.questions[+e.target.dataset.i];
+    if (f === 'option') q.options[+e.target.dataset.o] = e.target.value;
+    else if (f === 'question_text' || f === 'explanation' || f === 'points') q[f] = e.target.value;
+    else if (f === 'correct_answer' && q.question_type === 'open_text') q.correct_answer = e.target.value;
+  });
+  list.addEventListener('change', function (e) {
+    var f = e.target.dataset.field;
+    if (!f) return;
+    var q = state.questions[+e.target.dataset.i];
+    if (f === 'correct_index') { q.correct_index = +e.target.value; renderQuestions(); }
+    else if (f === 'correct_answer' && q.question_type === 'rating') { q.correct_answer = e.target.value; }
+    else if (f === 'scale') {
+      var n = +e.target.value;
+      q.options = Array.from({ length: n }, function (_, k) { return String(k + 1); });
+      if (q.options.indexOf(q.correct_answer) === -1) q.correct_answer = '';
+      renderQuestions();
+    } else if (f === 'question_type') {
+      var keep = { text: q.question_text, expl: q.explanation, pts: q.points };
+      var fresh = newQuestion(e.target.value);
+      fresh.id = q.id; fresh.question_text = keep.text; fresh.explanation = keep.expl; fresh.points = keep.pts;
+      state.questions[+e.target.dataset.i] = fresh;
+      renderQuestions();
+    }
+  });
+  list.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    var i = +btn.dataset.i, q = state.questions[i], act = btn.dataset.act;
+    if (act === 'addOption') q.options.push('');
+    else if (act === 'removeOption') {
+      var o = +btn.dataset.o;
+      if (q.options.length <= 2) return;
+      q.options.splice(o, 1);
+      if (q.correct_index === o) q.correct_index = -1; else if (q.correct_index > o) q.correct_index--;
+    } else if (act === 'clearCorrect') q.correct_index = -1;
+    else if (act === 'remove') state.questions.splice(i, 1);
+    else if (act === 'up' && i > 0) { var t = state.questions[i - 1]; state.questions[i - 1] = q; state.questions[i] = t; }
+    else if (act === 'down' && i < state.questions.length - 1) { var t2 = state.questions[i + 1]; state.questions[i + 1] = q; state.questions[i] = t2; }
+    renderQuestions();
+  });
+  document.querySelectorAll('[data-add]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.questions.push(newQuestion(b.dataset.add));
+      renderQuestions();
+      var cards = list.children;
+      if (cards.length) cards[cards.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+
+  // ----- validation -----
+  function validate(upTo) {
+    if (!String(state.title).trim()) return 'Please give your poll a title.';
+    var p = parseFloat(state.passing_score);
+    if (isNaN(p) || p < 0 || p > 100) return 'Passing score must be between 0 and 100.';
+    if (upTo < 2) return '';
+    if (!state.questions.length) return 'Add at least one question.';
+    for (var i = 0; i < state.questions.length; i++) {
+      var q = state.questions[i];
+      if (!String(q.question_text).trim()) return 'Question ' + (i + 1) + ' has no text.';
+      if (q.question_type === 'multiple_choice') {
+        var filled = q.options.filter(function (o) { return String(o).trim(); });
+        if (filled.length < 2) return 'Question ' + (i + 1) + ' needs at least 2 filled options.';
+        if (q.correct_index >= 0 && !String(q.options[q.correct_index]).trim()) return 'Question ' + (i + 1) + ': the correct option is empty.';
+      }
+      if (!(parseFloat(q.points) > 0)) return 'Question ' + (i + 1) + ': points must be more than 0.';
+    }
+    return '';
+  }
+
+  function payload() {
+    return {
+      title: String(state.title).trim(), description: state.description, category: state.category,
+      passing_score: parseFloat(state.passing_score) || 0, is_active: !!state.is_active,
+      questions: state.questions.map(function (q) {
+        var out = { id: q.id, question_text: q.question_text, question_type: q.question_type,
+                    explanation: q.explanation, points: parseFloat(q.points) || 1, options: q.options, correct_answer: '' };
+        if (q.question_type === 'multiple_choice') {
+          // send only non-empty options and remap the correct one by text
+          out.options = q.options.map(function (o) { return String(o).trim(); }).filter(Boolean);
+          out.correct_answer = q.correct_index >= 0 ? String(q.options[q.correct_index]).trim() : '';
+        } else {
+          out.correct_answer = q.correct_answer;
+        }
+        return out;
+      })
+    };
+  }
+
+  // ----- review -----
+  function renderReview() {
+    var scored = state.questions.filter(function (q) {
+      return q.question_type === 'multiple_choice' ? q.correct_index >= 0 : String(q.correct_answer).trim() !== '';
+    });
+    var totalPts = scored.reduce(function (s, q) { return s + (parseFloat(q.points) || 0); }, 0);
+    var html = '<div class="grid sm:grid-cols-4 gap-3">' +
+      box('Title', esc(state.title)) + box('Category', esc(state.category || 'General')) +
+      box('Pass mark', (parseFloat(state.passing_score) || 0) > 0 ? esc(state.passing_score) + '%' : 'None') +
+      box('Status', state.is_active ? 'Active' : 'Closed') + '</div>' +
+      '<div class="text-muted">' + state.questions.length + ' questions &middot; ' + scored.length + ' scored (' + totalPts + ' points total)</div>' +
+      '<ol class="space-y-2">' + state.questions.map(function (q, i) {
+        var tag = TYPE_LABEL[q.question_type];
+        var isScored = scored.indexOf(q) !== -1;
+        return '<li class="border border-line rounded-lg p-3 bg-white"><span class="font-semibold">Q' + (i + 1) + '.</span> ' + esc(q.question_text) +
+          '<div class="text-xs text-muted mt-1">' + tag + ' &middot; ' + (isScored ? esc(q.points) + ' pts' : 'unscored') + '</div></li>';
+      }).join('') + '</ol>';
+    if ((parseFloat(state.passing_score) || 0) > 0 && !scored.length) {
+      html += '<div class="rounded-lg border border-amber-200 bg-amber-50 text-warn px-3 py-2">You set a pass mark but no question has a correct answer, so nothing will be scored.</div>';
+    }
+    $('review').innerHTML = html;
+  }
+  function box(label, value) {
+    return '<div class="border border-line rounded-lg p-3 bg-white"><div class="text-xs uppercase tracking-wide text-muted">' + label + '</div><div class="font-semibold truncate">' + value + '</div></div>';
+  }
+
+  // ----- stepper / navigation -----
+  var LABELS = ['Details', 'Questions', 'Review'];
+  function showStep() {
+    [1, 2, 3].forEach(function (n) { $('step' + n).classList.toggle('hidden', n !== step); });
+    $('stepper').innerHTML = LABELS.map(function (label, i) {
+      var n = i + 1, done = n < step, now = n === step;
+      return '<li class="flex items-center gap-2 ' + (i ? 'flex-1' : '') + '">' + (i ? '<span class="flex-1 h-px ' + (done || now ? 'bg-accent' : 'bg-line') + '"></span>' : '') +
+        '<span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ' + (done ? 'bg-good text-white' : now ? 'bg-accent text-white' : 'bg-card border border-line text-muted') + '">' + (done ? '&#10003;' : n) + '</span>' +
+        '<span class="hidden sm:inline ' + (now ? 'font-semibold' : 'text-muted') + '">' + label + '</span></li>';
+    }).join('');
+    $('backBtn').style.visibility = step === 1 ? 'hidden' : 'visible';
+    $('nextBtn').textContent = step === 3 ? (EDITING ? 'Save changes' : 'Publish poll') : 'Next';
+    if (step === 2) renderQuestions();
+    if (step === 3) renderReview();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function showError(msg) {
+    var box = $('errorBox');
+    box.textContent = msg;
+    box.classList.toggle('hidden', !msg);
+  }
+
+  $('backBtn').addEventListener('click', function () { if (step > 1) { step--; showError(''); showStep(); } });
+  $('nextBtn').addEventListener('click', function () {
+    var err = validate(step);
+    if (err) { showError(err); return; }
+    showError('');
+    if (step < 3) { step++; showStep(); return; }
+    var btn = $('nextBtn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    fetch(EDITING ? '/api/polls/' + state.id : '/api/polls', {
+      method: EDITING ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload())
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (res.ok) { window.location = res.d.redirect; return; }
+        showError(res.d.error || 'Something went wrong.');
+        btn.disabled = false; btn.textContent = EDITING ? 'Save changes' : 'Publish poll';
+      }).catch(function () {
+        showError('Could not reach the server.');
+        btn.disabled = false; btn.textContent = EDITING ? 'Save changes' : 'Publish poll';
+      });
+  });
+
+  showStep();
+})();
+</script>
+{% endblock %}

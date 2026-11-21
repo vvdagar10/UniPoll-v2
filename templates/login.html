@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Log in - UniPoll Score Smart{% endblock %}
+{% block auth %}
+<div class="text-center mb-6 fade-up">
+  <h1 class="font-serif text-3xl font-bold">UniPoll <span class="text-accent">Score Smart</span></h1>
+  <p class="text-muted mt-1">Create, share and auto-score polls, quizzes and surveys.</p>
+</div>
+<form method="post" class="bg-card border border-line rounded-xl p-6 space-y-4 fade-up">
+  <h2 class="font-serif text-xl font-bold">Log in</h2>
+  <div>
+    <label class="block text-sm font-semibold mb-1" for="email">Email</label>
+    <input id="email" name="email" type="email" required autofocus class="w-full border border-line rounded-lg px-3 py-2 bg-white">
+  </div>
+  <div>
+    <label class="block text-sm font-semibold mb-1" for="password">Password</label>
+    <input id="password" name="password" type="password" required class="w-full border border-line rounded-lg px-3 py-2 bg-white">
+  </div>
+  <button class="w-full bg-accent hover:bg-accentdark text-white font-semibold py-2.5 rounded-lg press">Log in</button>
+  <p class="text-sm text-center text-muted">New here? <a class="text-accent hover:underline" href="{{ url_for('signup') }}">Create an account</a></p>
+</form>
+{% endblock %}

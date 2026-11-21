@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - UniPoll Score Smart{% endblock %}
+
+{% macro stat(label, value, hint='') %}
+  <div class="lift bg-card border border-line rounded-xl p-4 fade-up">
+    <div class="text-xs uppercase tracking-wide text-muted">{{ label }}</div>
+    <div class="font-serif text-3xl font-bold mt-1">{{ value }}</div>
+    {% if hint %}<div class="text-xs text-muted mt-1">{{ hint }}</div>{% endif %}
+  </div>
+{% endmacro %}
+
+{% block content %}
+<div class="mb-6 fade-up">
+  <h1 class="font-serif text-2xl md:text-3xl font-bold">Hello, {{ g.user['name'].split(' ')[0] }}</h1>
+  <p class="text-muted">
+    {% if mode == 'creator' %}Here is how your polls and quizzes are doing.{% else %}Pick up where you left off, or try something new.{% endif %}
+  </p>
+</div>
+
+{% if mode == 'creator' %}
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    {{ stat('Polls', stats.polls, stats.active ~ ' active') }}
+    {{ stat('Submissions', stats.total, stats.completed ~ ' completed') }}
+    {{ stat('Partial / drop-offs', stats.partial, 'started, not finished') }}
+    {{ stat('Average score', (stats.avg|fmt ~ '%') if stats.avg is not none else '-', 'across scored quizzes') }}
+  </div>
+
+  <div class="grid lg:grid-cols-2 gap-6 mt-6">
+    <section class="bg-card border border-line rounded-xl p-5 fade-up">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-serif text-lg font-bold">Your latest polls</h2>
+        <a href="{{ url_for('poll_new') }}" class="text-sm bg-accent hover:bg-accentdark text-white px-3 py-1.5 rounded-lg press">+ New poll</a>
+      </div>
+      {% if polls %}
+        <ul class="divide-y divide-line">
+          {% for p in polls %}
+            <li class="py-3 flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <a href="{{ url_for('analytics_page', poll=p.id) }}" class="font-semibold hover:text-accent truncate block">{{ p.title }}</a>
+                <div class="text-xs text-muted">{{ p.q_count }} questions &middot; {{ p.completed }} completed &middot; {{ p.partial }} partial</div>
+              </div>
+              <span class="text-xs px-2 py-0.5 rounded-full border {{ 'border-good text-good' if p.is_active else 'border-line text-muted' }}">{{ 'Active' if p.is_active else 'Closed' }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted text-sm py-6 text-center">You have not created any polls yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="bg-card border border-line rounded-xl p-5 fade-up">
+      <h2 class="font-serif text-lg font-bold mb-3">Recent activity</h2>
+      {% if recent %}
+        <ul class="divide-y divide-line">
+          {% for s in recent %}
+            <li class="py-3 flex items-center justify-between gap-3 text-sm">
+              <div class="min-w-0">
+                <div class="font-semibold truncate">{{ s.who }}</div>
+                <div class="text-xs text-muted truncate">{{ s.title }}</div>
+              </div>
+              {% if s.status == 'completed' %}
+                <a href="{{ url_for('result_page', sub_id=s.id) }}" class="shrink-0 text-xs px-2 py-1 rounded-full border border-good text-good hover:bg-green-50">
+                  {% if s.calculated_score is not none %}{{ s.calculated_score|fmt }}%{% else %}Submitted{% endif %}
+                </a>
+              {% else %}
+                <span class="shrink-0 text-xs px-2 py-1 rounded-full border border-warn text-warn">Partial</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted text-sm py-6 text-center">No responses yet. Share a poll to get started.</p>
+      {% endif %}
+    </section>
+  </div>
+
+{% else %}
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    {{ stat('Completed', stats.attempts) }}
+    {{ stat('In progress', stats.in_progress) }}
+    {{ stat('Average score', (stats.avg|fmt ~ '%') if stats.avg is not none else '-') }}
+    {{ stat('Quizzes passed', stats.passed) }}
+  </div>
+
+  <div class="grid lg:grid-cols-2 gap-6 mt-6">
+    <section class="bg-card border border-line rounded-xl p-5 fade-up">
+      <h2 class="font-serif text-lg font-bold mb-3">Available to take</h2>
+      {% if available %}
+        <ul class="divide-y divide-line">
+          {% for p in available %}
+            <li class="py-3 flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-semibold truncate">{{ p.title }}</div>
+                <div class="text-xs text-muted">{{ p.category }} &middot; {{ p.q_count }} questions</div>
+              </div>
+              <a href="{{ url_for('poll_take', poll_id=p.id) }}" class="shrink-0 text-sm bg-accent hover:bg-accentdark text-white px-3 py-1.5 rounded-lg press">Start</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted text-sm py-6 text-center">No active polls right now.</p>
+      {% endif %}
+    </section>
+
+    <section class="bg-card border border-line rounded-xl p-5 fade-up">
+      <h2 class="font-serif text-lg font-bold mb-3">Your recent attempts</h2>
+      {% if attempts %}
+        <ul class="divide-y divide-line">
+          {% for a in attempts %}
+            <li class="py-3 flex items-center justify-between gap-3 text-sm">
+              <div class="min-w-0">
+                <div class="font-semibold truncate">{{ a.title }}</div>
+                <div class="text-xs text-muted">{{ a.submitted_at or a.started_at }}</div>
+              </div>
+              {% if a.status == 'completed' %}
+                <a href="{{ url_for('result_page', sub_id=a.id) }}" class="shrink-0 text-xs px-2 py-1 rounded-full border border-good text-good hover:bg-green-50">
+                  {% if a.calculated_score is not none %}{{ a.calculated_score|fmt }}%{% else %}View{% endif %}
+                </a>
+              {% else %}
+                <a href="{{ url_for('poll_take', poll_id=a.poll_id) }}" class="shrink-0 text-xs px-2 py-1 rounded-full border border-warn text-warn hover:bg-amber-50">Resume</a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted text-sm py-6 text-center">You have not taken any polls yet.</p>
+      {% endif %}
+    </section>
+  </div>
+{% endif %}
+{% endblock %}

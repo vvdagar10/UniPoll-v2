@@ -1,0 +1,213 @@
+{% extends 'base.html' %}
+{% block title %}AI Key Setup - UniPoll Score Smart{% endblock %}
+{% block content %}
+<div class="mb-6 fade-up">
+  <h1 class="font-serif text-2xl md:text-3xl font-bold">AI Key Setup</h1>
+  <p class="text-muted">Connect any AI provider once. UniPoll uses it to mark answers in the Answer Sheet Evaluator and to grade open-text quiz answers. The key stays saved until you change or remove it.</p>
+</div>
+
+<div class="grid lg:grid-cols-5 gap-5">
+  <!-- Key form -->
+  <section class="lg:col-span-3 bg-card border border-line rounded-xl p-5 fade-up">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-serif text-lg font-bold">Your API key</h2>
+      <span id="statusPill" class="text-xs uppercase tracking-wide px-2 py-1 rounded border
+        {{ 'bg-green-50 border-green-200 text-good' if cfg else 'bg-paper border-line text-muted' }}">
+        {{ 'AI marking on' if cfg else 'Not connected' }}
+      </span>
+    </div>
+
+    <div id="currentBox" class="{{ '' if cfg else 'hidden' }} mb-4 rounded-lg border border-line bg-paper px-4 py-3 text-sm">
+      <div class="text-muted text-xs uppercase tracking-wide mb-1">Connected</div>
+      <div><span id="curProvider" class="font-semibold">{{ cfg.label if cfg else '' }}</span>
+           <span class="text-muted">&middot;</span> <span id="curModel" class="font-mono text-xs">{{ cfg.model if cfg else '' }}</span></div>
+      <div class="font-mono mt-1" id="maskedKey">{{ masked }}</div>
+      <div class="text-xs text-muted mt-1" id="sourceNote">
+        {% if cfg and cfg.source == 'env' %}Loaded from your .env file. Saving a key here overrides it.{% else %}Stored in the app database. It stays after you restart or log out.{% endif %}
+      </div>
+    </div>
+
+    <label for="provider" class="block text-sm font-semibold mb-1">Provider</label>
+    <select id="provider" class="w-full border border-line rounded-lg px-3 py-2.5 bg-white text-sm">
+      <option value="auto">Auto-detect from my key</option>
+      {% for k, v in providers.items() %}
+      <option value="{{ k }}">{{ v.label }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="keyInput" class="block text-sm font-semibold mt-4 mb-1" id="keyLabel">{{ 'Replace key (leave blank to keep the current one)' if cfg else 'Paste your key' }}</label>
+    <div class="relative">
+      <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="AIza...  or  gsk_...  or  sk-..."
+             class="w-full border border-line rounded-lg px-3 py-2.5 pr-16 bg-white font-mono text-sm">
+      <button type="button" id="toggleVis" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted hover:text-ink px-2 py-1">Show</button>
+    </div>
+
+    <details class="mt-4 group" id="advanced">
+      <summary class="text-sm text-muted cursor-pointer hover:text-ink">Advanced: model name and URL</summary>
+      <div class="mt-3 space-y-3">
+        <div>
+          <label for="model" class="block text-sm font-semibold mb-1">Model</label>
+          <input id="model" type="text" autocomplete="off" spellcheck="false" maxlength="120"
+                 value="{{ cfg.model if cfg and cfg.source == 'saved' else '' }}"
+                 class="w-full border border-line rounded-lg px-3 py-2.5 bg-white font-mono text-sm">
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" id="findBtn" class="press border border-line bg-white hover:bg-paper rounded-lg px-3 py-1.5 text-xs">Find models for my key</button>
+            <select id="modelList" class="hidden border border-line rounded-lg px-2 py-1.5 bg-white text-xs font-mono max-w-full"></select>
+          </div>
+          <p class="text-xs text-muted mt-1">Leave blank for the provider's default. Providers retire old model names now and then; if marking says the model was not found, type a current one here.</p>
+        </div>
+        <div id="urlBox" class="hidden">
+          <label for="baseUrl" class="block text-sm font-semibold mb-1">Base URL</label>
+          <input id="baseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.example.com/v1"
+                 value="{{ cfg.base if cfg and cfg.source == 'saved' and cfg.provider == 'custom' else '' }}"
+                 class="w-full border border-line rounded-lg px-3 py-2.5 bg-white font-mono text-sm">
+        </div>
+      </div>
+    </details>
+
+    <div class="mt-5 flex flex-wrap gap-2">
+      <button id="saveBtn" type="button" class="press bg-accent hover:bg-accentdark text-white font-semibold rounded-lg px-4 py-2.5 text-sm">Save key</button>
+      <button id="testBtn" type="button" class="press border border-line bg-white hover:bg-paper rounded-lg px-4 py-2.5 text-sm {{ '' if cfg else 'hidden' }}">Test connection</button>
+      <button id="removeBtn" type="button" class="press text-accent hover:underline px-2 py-2.5 text-sm {{ '' if cfg and cfg.source == 'saved' else 'hidden' }}">Remove key</button>
+    </div>
+
+    <p id="msg" class="mt-4 text-sm hidden" role="status"></p>
+
+    <p class="mt-5 text-xs text-muted">The key is stored on the server, never shown in full again, and never sent to respondents' browsers.
+      For open-text quiz questions, if the AI call ever fails, grading falls back to keyword matching so quizzes keep working.</p>
+  </section>
+
+  <!-- Guide -->
+  <section class="lg:col-span-2 bg-card border border-line rounded-xl p-5 fade-up">
+    <h2 class="font-serif text-lg font-bold mb-3">Get a free key in 3 steps</h2>
+    <ol class="space-y-3 text-sm">
+      <li class="flex gap-3"><span class="shrink-0 w-6 h-6 rounded-full bg-accent text-white text-xs flex items-center justify-center font-bold">1</span>
+        <span>Open <a class="text-accent hover:underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with a Google account.</span></li>
+      <li class="flex gap-3"><span class="shrink-0 w-6 h-6 rounded-full bg-accent text-white text-xs flex items-center justify-center font-bold">2</span>
+        <span>Click <b>Create API key</b> and copy it (it starts with <code class="font-mono">AIza</code>).</span></li>
+      <li class="flex gap-3"><span class="shrink-0 w-6 h-6 rounded-full bg-accent text-white text-xs flex items-center justify-center font-bold">3</span>
+        <span>Paste it here, keep <b>Auto-detect</b>, and press <b>Save key</b>.</span></li>
+    </ol>
+
+    <h3 class="font-semibold mt-6 mb-2 text-sm">Other keys that work</h3>
+    <ul class="text-sm text-muted space-y-1.5 list-disc pl-5">
+      <li><b class="text-ink">Groq</b> (<code class="font-mono">gsk_</code>): free key at console.groq.com/keys</li>
+      <li><b class="text-ink">OpenRouter</b> (<code class="font-mono">sk-or-</code>): has free models. Type a model name that ends in <code class="font-mono">:free</code> in Advanced.</li>
+      <li><b class="text-ink">OpenAI</b> (<code class="font-mono">sk-</code>) and <b class="text-ink">Claude</b> (<code class="font-mono">sk-ant-</code>) are paid.</li>
+      <li><b class="text-ink">Anything else</b> that is OpenAI-compatible: choose <i>Other</i> and give its base URL.</li>
+    </ul>
+
+    <h3 class="font-semibold mt-6 mb-2 text-sm">Good to know</h3>
+    <ul class="text-sm text-muted space-y-1.5 list-disc pl-5">
+      <li>Free tiers have request limits and their terms change, so check the provider's current rules.</li>
+      <li>Some free tiers may use prompts to improve their products. Do not paste real students' private details.</li>
+      <li>Marking photos needs a model that can read images. Typed answers work with any model.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var PROVIDERS = {{ providers | tojson }};
+  var $ = function (id) { return document.getElementById(id); };
+  var input = $('keyInput'), msg = $('msg');
+
+  function syncProvider() {
+    var p = $('provider').value;
+    $('urlBox').classList.toggle('hidden', p !== 'custom');
+    var def = PROVIDERS[p] ? PROVIDERS[p].model : '';
+    $('model').placeholder = def ? 'Default: ' + def : (p === 'auto' ? 'Default for the detected provider' : 'Required, e.g. a model name from the provider');
+    if (p === 'custom' || p === 'openrouter') $('advanced').open = true;
+    // drop a model name that belongs to a different provider
+    var m = $('model').value, other = Object.keys(PROVIDERS).some(function (k) { return k !== p && PROVIDERS[k].model && PROVIDERS[k].model === m; });
+    if (p !== 'auto' && other) $('model').value = '';
+  }
+  $('provider').addEventListener('change', syncProvider);
+  syncProvider();
+
+  function show(text, ok) {
+    msg.textContent = text;
+    msg.className = 'mt-4 text-sm ' + (ok ? 'text-good' : 'text-accentdark');
+  }
+  function setBusy(btn, busy, label) {
+    btn.disabled = busy; btn.style.opacity = busy ? '.6' : '';
+    if (label) btn.textContent = label;
+  }
+  function setConnected(d) {
+    $('statusPill').textContent = 'AI marking on';
+    $('statusPill').className = 'text-xs uppercase tracking-wide px-2 py-1 rounded border bg-green-50 border-green-200 text-good';
+    $('currentBox').classList.remove('hidden');
+    $('curProvider').textContent = d.label; $('curModel').textContent = d.model;
+    $('maskedKey').textContent = d.masked;
+    $('sourceNote').textContent = 'Stored in the app database. It stays after you restart or log out.';
+    $('keyLabel').textContent = 'Replace key (leave blank to keep the current one)';
+    $('testBtn').classList.remove('hidden'); $('removeBtn').classList.remove('hidden');
+  }
+  function setDisconnected() {
+    $('statusPill').textContent = 'Not connected';
+    $('statusPill').className = 'text-xs uppercase tracking-wide px-2 py-1 rounded border bg-paper border-line text-muted';
+    $('currentBox').classList.add('hidden');
+    $('keyLabel').textContent = 'Paste your key';
+    $('testBtn').classList.add('hidden'); $('removeBtn').classList.add('hidden');
+  }
+  async function call(url, method, body) {
+    var res = await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' },
+                                 body: body ? JSON.stringify(body) : undefined });
+    var data = await res.json().catch(function () { return {}; });
+    return { ok: res.ok, data: data };
+  }
+
+  $('toggleVis').addEventListener('click', function () {
+    var hidden = input.type === 'password';
+    input.type = hidden ? 'text' : 'password';
+    this.textContent = hidden ? 'Hide' : 'Show';
+  });
+
+  $('findBtn').addEventListener('click', async function () {
+    var btn = this; setBusy(btn, true, 'Looking...');
+    try {
+      var r = await call('/api/settings/models', 'POST', { key: input.value, provider: $('provider').value, base_url: $('baseUrl').value });
+      if (!r.ok) { show(r.data.error || 'Could not fetch models.', false); return; }
+      var list = $('modelList');
+      list.innerHTML = '<option value="">Pick one of ' + r.data.models.length + ' models...</option>' +
+        r.data.models.map(function (m) { var o = document.createElement('option'); o.value = m; o.textContent = m; return o.outerHTML; }).join('');
+      list.classList.remove('hidden');
+      show('Found ' + r.data.models.length + ' models on ' + r.data.label + '. Pick one, then press Save key. (Typed answers work with any chat model; photos need a vision model.)', true);
+    } catch (e) { show('Network error. Is the server running?', false); }
+    finally { setBusy(btn, false, 'Find models for my key'); }
+  });
+  $('modelList').addEventListener('change', function () { if (this.value) $('model').value = this.value; });
+
+  $('saveBtn').addEventListener('click', async function () {
+    var btn = this; setBusy(btn, true, 'Saving and testing...');
+    try {
+      var r = await call('/api/settings/key', 'POST', {
+        key: input.value, provider: $('provider').value, model: $('model').value, base_url: $('baseUrl').value });
+      if (!r.ok) { show(r.data.error || 'Could not save the key.', false); return; }
+      input.value = ''; input.type = 'password'; $('toggleVis').textContent = 'Show';
+      setConnected(r.data);
+      show(r.data.message, r.data.tested);
+    } catch (e) { show('Network error. Is the server running?', false); }
+    finally { setBusy(btn, false, 'Save key'); }
+  });
+
+  $('testBtn').addEventListener('click', async function () {
+    var btn = this; setBusy(btn, true, 'Testing...');
+    try { var r = await call('/api/settings/key/test', 'POST'); show(r.data.message, r.data.ok); }
+    catch (e) { show('Network error. Is the server running?', false); }
+    finally { setBusy(btn, false, 'Test connection'); }
+  });
+
+  $('removeBtn').addEventListener('click', async function () {
+    if (!confirm('Remove the saved key? AI marking will switch off.')) return;
+    try {
+      var r = await call('/api/settings/key', 'DELETE');
+      if (r.data.has_env) { location.reload(); return; }
+      setDisconnected(); show('Key removed.', true);
+    } catch (e) { show('Network error. Is the server running?', false); }
+  });
+})();
+</script>
+{% endblock %}
